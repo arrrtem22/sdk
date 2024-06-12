@@ -22,42 +22,47 @@ extension ElementAnnotationExtensions on ElementAnnotation {
 
   /// Return the target kinds defined for this [ElementAnnotation].
   Set<TargetKind> get targetKinds {
-    var element = this.element;
+    final element = this.element;
     InterfaceElement? interfaceElement;
     if (element is PropertyAccessorElement) {
       if (element.isGetter) {
         var type = element.returnType;
         if (type is InterfaceType) {
-          interfaceElement = type.element;
+          interfaceElement = type.element2;
         }
       }
     } else if (element is ConstructorElement) {
-      interfaceElement = element.enclosingElement.augmented.declaration;
+      interfaceElement = element.enclosingElement3;
     }
     if (interfaceElement == null) {
       return const <TargetKind>{};
     }
     for (var annotation in interfaceElement.metadata) {
       if (annotation.isTarget) {
-        var value = annotation.computeConstantValue();
-        if (value == null) {
-          return const <TargetKind>{};
-        }
+        var value = annotation.computeConstantValue()!;
+        var kinds = <TargetKind>{};
 
-        var annotationKinds = value.getField('kinds')?.toSetValue();
-        if (annotationKinds == null) {
-          return const <TargetKind>{};
-        }
+        for (var kindObject in value.getField('kinds')!.toSetValue()!) {
+          // We can't directly translate the index from the analyzed TargetKind
+          // constant to TargetKinds.values because the analyzer from the SDK
+          // may have been compiled with a different version of pkg:meta.
+          // add this if
+          if(kindObject.getField('index') != null){
+            var index = kindObject.getField('index')!.toIntValue()!;
+            var targetKindClass =
+            (kindObject.type as InterfaceType).element2 as EnumElementImpl;
+            // Instead, map constants to their TargetKind by comparing getter
+            // names.
+            var getter = targetKindClass.constants[index];
+            var name = 'TargetKind.${getter.name}';
 
-        return annotationKinds
-            .map((e) {
-              // Support class-based and enum-based target kind implementations.
-              var field = e.getField('name') ?? e.getField('_name');
-              return field?.toStringValue();
-            })
-            .map((name) => _targetKindsByName[name])
-            .nonNulls
-            .toSet();
+            var foundTargetKind = _targetKindsByName[name];
+            if (foundTargetKind != null) {
+              kinds.add(foundTargetKind);
+            }
+          }
+        }
+        return kinds;
       }
     }
     return const <TargetKind>{};
